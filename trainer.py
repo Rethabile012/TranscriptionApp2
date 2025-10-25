@@ -24,7 +24,7 @@ def evaluate(model, loader, criterion, dataset, decoder, device, logit_scale=Non
             features, transcripts = features.to(device), transcripts.to(device)
             feat_lens, trans_lens = feat_lens.to(device), trans_lens.to(device)
 
-            logits = model(features)
+            logits = model(features, feat_lens)
             if logit_scale is not None:
                 logits = logits * logit_scale
 
@@ -96,7 +96,7 @@ def train_ctc(num_epochs=50, batch_size=8, lr=1e-3, hidden_dim=512, device=None)
             feat_lens, trans_lens = feat_lens.to(device), trans_lens.to(device)
 
             optimizer.zero_grad()
-            logits = model(features) * logit_scale
+            logits = model(features, feat_lens) * logit_scale
             log_probs = logits.log_softmax(dim=-1).permute(1, 0, 2)
             loss = criterion(log_probs, transcripts, feat_lens, trans_lens)
             loss.backward()
