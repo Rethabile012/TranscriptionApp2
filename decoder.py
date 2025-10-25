@@ -1,5 +1,4 @@
 import numpy as np
-import kenlm
 from collections import defaultdict
 
 class CTCBeamSearchDecoder:
@@ -11,10 +10,7 @@ class CTCBeamSearchDecoder:
         self.alpha = alpha
         self.beta = beta
 
-        if lm_path:
-            self.lm = kenlm.Model(lm_path)
-        else:
-            self.lm = None
+        
 
     def decode(self, log_probs):
         # log_probs: (T, C)
