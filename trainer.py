@@ -37,13 +37,23 @@ def evaluate(model, loader, criterion, dataset, decoder, device, logit_scale=Non
                 scale = logit_scale.detach() if isinstance(logit_scale, nn.Parameter) else torch.tensor(logit_scale, device=device)
                 logits = logits * scale
 
+            # adjust lengths after CNN downsampling
             feat_lens_post = adjust_lengths(feat_lens, conv_strides=[2,2])
-            log_probs = logits.log_softmax(dim=-1).permute(1, 0, 2)
+            log_probs = logits.log_softmax(dim=-1).permute(1, 0, 2)  # (T, B, V)
+
+            # compute loss
             loss = criterion(log_probs, transcripts, feat_lens_post, trans_lens)
             total_loss += loss.item()
 
-            # Decode for CER computation
-            preds = decoder.decode(log_probs)
+            # Decode per sample
+            preds = []
+            T, B, V = log_probs.shape
+            for b in range(B):
+                lp = log_probs[:, b, :]           # shape (T, V)
+                pred = decoder.decode(lp)         # decode single example
+                preds.append(pred)
+
+            # Compute CER
             start = 0
             for i, length in enumerate(trans_lens):
                 target_seq = transcripts[start:start+length].cpu().numpy().tolist()
