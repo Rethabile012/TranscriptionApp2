@@ -5,8 +5,8 @@ from features import AudioProcessor
 
 class Dataset:
     def __init__(self, 
-                 audio_root="TrainingSet/audio", 
-                 transcript_root="TrainingSet/transcripts",
+                 audio_root="/kaggle/input/transcriptions/Pipeline 2/TrainingSet/audio", 
+                 transcript_root="/kaggle/input/transcriptions/Pipeline 2/TrainingSet/transcripts",
                  vocab="abcdefghijklmnopqrstuvwxyz '",
                  sample_rate=16000):
         self.audio_root = audio_root
@@ -92,10 +92,10 @@ class Dataset:
     def get_all_data(self):
         return self.load_pairs(self.audio_root, self.transcript_root)
 
-    def get_validation_data(self, audio_root="ValidationSet/audio", transcript_root="ValidationSet/transcripts"):
+    def get_validation_data(self, audio_root="/kaggle/input/transcriptions/Pipeline 2/ValidationSet/audio", transcript_root="/kaggle/input/transcriptions/Pipeline 2/ValidationSet/transcripts"):
         return self.load_pairs(audio_root, transcript_root)
 
-    def get_test_data(self, audio_root="TestSet/audio", transcript_root="TestSet/transcripts"):
+    def get_test_data(self, audio_root="/kaggle/input/transcriptions/Pipeline 2/TestSet/audio", transcript_root="/kaggle/input/transcriptions/Pipeline 2/TestSet/transcripts"):
         return self.load_pairs(audio_root, transcript_root)
 
 
