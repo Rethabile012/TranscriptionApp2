@@ -8,6 +8,11 @@ import editdistance
 import numpy as np
 import os
 
+def adjust_lengths(lengths, conv_strides):
+    # lengths: tensor of original input lengths
+    for stride in conv_strides:
+        lengths = ((lengths - 1) // stride) + 1
+    return lengths
 
 def cer(pred_text, target_text):
     if len(target_text) == 0:
@@ -27,9 +32,9 @@ def evaluate(model, loader, criterion, dataset, decoder, device, logit_scale=Non
             logits = model(features, feat_lens)
             if logit_scale is not None:
                 logits = logits * logit_scale
-
+            feat_lens_post = adjust_lengths(feat_lens, conv_strides=[2,2])
             log_probs = logits.log_softmax(dim=-1).permute(1, 0, 2)
-            loss = criterion(log_probs, transcripts, feat_lens, trans_lens)
+            loss = criterion(log_probs, transcripts, feat_lens_post, trans_lens)
             total_loss += loss.item()
 
             preds = decoder.decode(log_probs)
@@ -96,9 +101,10 @@ def train_ctc(num_epochs=50, batch_size=8, lr=1e-3, hidden_dim=512, device=None)
             feat_lens, trans_lens = feat_lens.to(device), trans_lens.to(device)
 
             optimizer.zero_grad()
-            logits = model(features, feat_lens) * logit_scale
+            logits, output_time = model(features, feat_lens)
+            feat_lens_post = adjust_lengths(feat_lens, conv_strides=[2,2])
             log_probs = logits.log_softmax(dim=-1).permute(1, 0, 2)
-            loss = criterion(log_probs, transcripts, feat_lens, trans_lens)
+            loss = criterion(log_probs, transcripts, feat_lens_post, trans_lens)
             loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(), 5.0)
             optimizer.step()
