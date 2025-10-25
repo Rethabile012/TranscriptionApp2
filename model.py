@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 
 class SpeechModel(nn.Module):
-    def __init__(self, input_dim=80, hidden_dim=512, vocab_size=30, num_layers=3):
+    def __init__(self, input_dim, hidden_dim=512, vocab_size=30, num_layers=3):
         super().__init__()
 
         # CNN front-end for temporal compression
