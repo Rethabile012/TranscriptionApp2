@@ -8,8 +8,9 @@ import editdistance
 import numpy as np
 import os
 
+# ---------------- Helper Functions ---------------- #
 def adjust_lengths(lengths, conv_strides):
-    # lengths: tensor of original input lengths
+    """Adjust sequence lengths after CNN downsampling"""
     for stride in conv_strides:
         lengths = ((lengths - 1) // stride) + 1
     return lengths
@@ -19,7 +20,7 @@ def cer(pred_text, target_text):
         return 1.0 if len(pred_text) > 0 else 0.0
     return editdistance.eval(pred_text, target_text) / len(target_text)
 
-
+# ---------------- Evaluation Function ---------------- #
 def evaluate(model, loader, criterion, dataset, decoder, device, logit_scale=None, idx2char=None):
     model.eval()
     total_loss, total_cer, num_samples = 0.0, 0.0, 0
@@ -29,14 +30,19 @@ def evaluate(model, loader, criterion, dataset, decoder, device, logit_scale=Non
             features, transcripts = features.to(device), transcripts.to(device)
             feat_lens, trans_lens = feat_lens.to(device), trans_lens.to(device)
 
-            logits = model(features, feat_lens)
+            logits, _ = model(features, feat_lens)
+
+            # safely multiply by logit_scale
             if logit_scale is not None:
-                logits = logits * logit_scale
+                scale = logit_scale.detach() if isinstance(logit_scale, nn.Parameter) else torch.tensor(logit_scale, device=device)
+                logits = logits * scale
+
             feat_lens_post = adjust_lengths(feat_lens, conv_strides=[2,2])
             log_probs = logits.log_softmax(dim=-1).permute(1, 0, 2)
             loss = criterion(log_probs, transcripts, feat_lens_post, trans_lens)
             total_loss += loss.item()
 
+            # Decode for CER computation
             preds = decoder.decode(log_probs)
             start = 0
             for i, length in enumerate(trans_lens):
@@ -52,7 +58,7 @@ def evaluate(model, loader, criterion, dataset, decoder, device, logit_scale=Non
     avg_cer = total_cer / num_samples
     return avg_loss, avg_cer
 
-
+# ---------------- Collate Function ---------------- #
 def collate_fn(batch):
     features, transcripts = zip(*batch)
     feature_lengths = [f.shape[0] for f in features]
@@ -68,7 +74,7 @@ def collate_fn(batch):
             torch.tensor(feature_lengths, dtype=torch.long),
             torch.tensor(transcript_lengths, dtype=torch.long))
 
-
+# ---------------- Training Function ---------------- #
 def train_ctc(num_epochs=50, batch_size=8, lr=1e-3, hidden_dim=512, device=None):
     device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
@@ -80,6 +86,7 @@ def train_ctc(num_epochs=50, batch_size=8, lr=1e-3, hidden_dim=512, device=None)
     features, transcripts, feat_lens, trans_lens = next(iter(train_loader))
     input_dim = features.shape[2]
     output_dim = len(dataset.char2idx) + 1
+
     model = SpeechModel(input_dim, hidden_dim, output_dim).to(device)
     criterion = nn.CTCLoss(blank=0, zero_infinity=True)
     logit_scale = nn.Parameter(torch.tensor(5.0, dtype=torch.float32, device=device), requires_grad=True)
@@ -101,7 +108,7 @@ def train_ctc(num_epochs=50, batch_size=8, lr=1e-3, hidden_dim=512, device=None)
             feat_lens, trans_lens = feat_lens.to(device), trans_lens.to(device)
 
             optimizer.zero_grad()
-            logits, output_time = model(features, feat_lens)
+            logits, _ = model(features, feat_lens)
             feat_lens_post = adjust_lengths(feat_lens, conv_strides=[2,2])
             log_probs = logits.log_softmax(dim=-1).permute(1, 0, 2)
             loss = criterion(log_probs, transcripts, feat_lens_post, trans_lens)
@@ -112,7 +119,7 @@ def train_ctc(num_epochs=50, batch_size=8, lr=1e-3, hidden_dim=512, device=None)
             total_loss += loss.item()
             num_batches += 1
 
-            # Compute quick greedy CER per batch for running display
+            # Greedy CER
             greedy = log_probs.argmax(dim=-1).transpose(0, 1)
             start = 0
             for i, length in enumerate(trans_lens):
@@ -126,7 +133,9 @@ def train_ctc(num_epochs=50, batch_size=8, lr=1e-3, hidden_dim=512, device=None)
 
         avg_train_loss = total_loss / num_batches
         avg_train_cer = total_cer / num_samples
-        avg_val_loss, avg_val_cer = evaluate(model, val_loader, criterion, dataset, decoder, device, logit_scale, dataset.idx2char)
+
+        # Evaluate on validation set
+        avg_val_loss, avg_val_cer = evaluate(model, val_loader, criterion, dataset, decoder, device, logit_scale.item(), dataset.idx2char)
 
         print(f"Epoch {epoch+1}/{num_epochs} | "
               f"Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f} | "
@@ -143,11 +152,13 @@ def train_ctc(num_epochs=50, batch_size=8, lr=1e-3, hidden_dim=512, device=None)
         if avg_val_cer < best_val_cer:
             best_val_cer = avg_val_cer
             np.save("best_model.npy", {
-                
+                'model_state': model.state_dict(),
+                'logit_scale': logit_scale.item(),
+                'optimizer_state': optimizer.state_dict(),
             })
             print(f"Saved best model at epoch {epoch+1} (Val CER={best_val_cer:.4f})")
 
-        # Save logs after each epoch
+        # Save metrics
         np.save("training_metrics.npy", {
             'train_loss': np.array(train_losses),
             'val_loss': np.array(val_losses),
@@ -157,6 +168,6 @@ def train_ctc(num_epochs=50, batch_size=8, lr=1e-3, hidden_dim=512, device=None)
 
     print(f"Training completed. Best Validation CER: {best_val_cer:.4f}")
 
-
+# ---------------- Run Training ---------------- #
 if __name__ == "__main__":
     train_ctc()
