@@ -42,13 +42,7 @@ class CTCBeamSearchDecoder:
                         # LM score
                         lm_score = 0.0
                         new_state = state
-                        if self.lm and len(seq) == 0:
-                            lm_score = self.alpha * self.lm.score(self.idx2char[c], bos=True, eos=False)
-                        elif self.lm and len(seq) > 0:
-                            prev_text = "".join([self.idx2char[i] for i in seq if i != self.blank])
-                            candidate_text = prev_text + self.idx2char[c]
-                            lm_score = self.alpha * self.lm.score(candidate_text, bos=True, eos=False)
-
+                        
                         # Word insertion bonus
                         if self.idx2char[c] == " ":
                             lm_score += self.beta
